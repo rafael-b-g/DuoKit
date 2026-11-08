@@ -5,12 +5,14 @@ import UIKit
 @available(iOS 27.1, *)
 struct DuoWindowReader: UIViewRepresentable {
     let tracker: DuoTracker
+    let thresholds: DuoFoldThresholds
 
     func makeUIView(context: Context) -> DuoWindowProbe {
-        DuoWindowProbe(tracker: tracker)
+        DuoWindowProbe(tracker: tracker, thresholds: thresholds)
     }
 
     func updateUIView(_ view: DuoWindowProbe, context: Context) {
+        view.updateThresholds(thresholds)
         view.setNeedsLayout()
     }
 
@@ -24,24 +26,23 @@ struct DuoWindowReader: UIViewRepresentable {
 @available(iOS 27.1, *)
 final class DuoWindowProbe: UIView {
     private let tracker: DuoTracker
-    private var foldState: DuoFoldState?
+    private(set) var foldState: DuoFoldState?
+    private var thresholds: DuoFoldThresholds
+    private var hingeAngle: Double?
     private var pendingUpdate: Task<Void, Never>?
     private var hingeInteraction: UIHingeInteraction?
 
-    init(tracker: DuoTracker) {
+    init(tracker: DuoTracker, thresholds: DuoFoldThresholds) {
         self.tracker = tracker
+        self.thresholds = thresholds
         super.init(frame: .zero)
         isUserInteractionEnabled = false
 
         let interaction = UIHingeInteraction { [weak self] _, update in
-            guard let self else { return }
+            guard let self, let hinge = update.hinge else { return }
             // An unavailable reading can be transient when moving hierarchies.
             // Keep the last valid physical state until a fresh reading arrives.
-            guard let hinge = update.hinge,
-                  let newState = DuoFoldState(hingeAngle: Double(hinge.angle)),
-                  newState != foldState else { return }
-            foldState = newState
-            setNeedsLayout()
+            updateHingeAngle(Double(hinge.angle))
         }
         hingeInteraction = interaction
         addInteraction(interaction)
@@ -56,7 +57,7 @@ final class DuoWindowProbe: UIView {
     }
 
     @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError("Use init(tracker:)") }
+    required init?(coder: NSCoder) { fatalError("Use init(tracker:thresholds:)") }
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
@@ -115,6 +116,22 @@ final class DuoWindowProbe: UIView {
     }
 
     @objc private func sceneDidActivate() { setNeedsLayout() }
+
+    func updateThresholds(_ thresholds: DuoFoldThresholds) {
+        guard thresholds != self.thresholds else { return }
+        self.thresholds = thresholds
+        if let hingeAngle { updateHingeAngle(hingeAngle) }
+    }
+
+    func updateHingeAngle(_ angle: Double) {
+        guard let newState = DuoFoldState(hingeAngle: angle, thresholds: thresholds) else { return }
+        // Retain the newest reading even within the same classification, so
+        // changing thresholds can immediately reclassify the physical pose.
+        hingeAngle = angle
+        guard newState != foldState else { return }
+        foldState = newState
+        setNeedsLayout()
+    }
 
     private func sizeClass(_ value: UIUserInterfaceSizeClass) -> DuoConfiguration.SizeClass {
         switch value {

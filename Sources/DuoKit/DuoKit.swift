@@ -29,7 +29,7 @@ public enum DuoDisplay: Hashable, Sendable {
 }
 
 /// The physical hinge state derived from its angle, independent of interface layout.
-/// Angles within one degree of closed or fully open use that endpoint state.
+/// Endpoint thresholds are configured with `View.duoTracking(closedThreshold:fullyOpenThreshold:)`.
 public enum DuoFoldState: Hashable, Sendable {
     case closed
     case partiallyOpen
@@ -37,12 +37,11 @@ public enum DuoFoldState: Hashable, Sendable {
 
     /// System status can remain `closed` at nonzero angles on the outer display.
     /// Classify the measured angle instead; unavailable readings retain prior state.
-    init?(hingeAngle: Double) {
+    init?(hingeAngle: Double, thresholds: DuoFoldThresholds = DuoFoldThresholds()) {
         guard hingeAngle.isFinite else { return nil }
-        let tolerance = Double.pi / 180 // One degree, expressed in radians.
-        if hingeAngle <= tolerance {
+        if hingeAngle <= thresholds.closed {
             self = .closed
-        } else if hingeAngle >= .pi - tolerance {
+        } else if hingeAngle >= thresholds.fullyOpen {
             self = .fullyOpen
         } else {
             self = .partiallyOpen

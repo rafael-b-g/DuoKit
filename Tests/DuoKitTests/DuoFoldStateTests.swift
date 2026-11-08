@@ -2,6 +2,28 @@ import Testing
 @testable import DuoKit
 
 struct DuoFoldStateTests {
+    @Test func customThresholdsIncludeBothBoundaries() {
+        let thresholds = DuoFoldThresholds(closed: 10 * .pi / 180, fullyOpen: 170 * .pi / 180)
+        #expect(DuoFoldState(hingeAngle: thresholds.closed, thresholds: thresholds) == .closed)
+        #expect(DuoFoldState(hingeAngle: 90 * .pi / 180, thresholds: thresholds) == .partiallyOpen)
+        #expect(DuoFoldState(hingeAngle: thresholds.fullyOpen, thresholds: thresholds) == .fullyOpen)
+    }
+
+    @Test func thresholdsCanBeCustomizedIndependently() {
+        let thresholds = DuoFoldThresholds(closed: 20 * .pi / 180, fullyOpen: 175 * .pi / 180)
+        #expect(DuoFoldState(hingeAngle: 13.58 * .pi / 180, thresholds: thresholds) == .closed)
+        #expect(DuoFoldState(hingeAngle: 174 * .pi / 180, thresholds: thresholds) == .partiallyOpen)
+        #expect(DuoFoldState(hingeAngle: 176 * .pi / 180, thresholds: thresholds) == .fullyOpen)
+    }
+
+    @Test func exactEndpointsCanBeRequired() {
+        let thresholds = DuoFoldThresholds(closed: 0, fullyOpen: .pi)
+        #expect(DuoFoldState(hingeAngle: 0, thresholds: thresholds) == .closed)
+        #expect(DuoFoldState(hingeAngle: 0.001, thresholds: thresholds) == .partiallyOpen)
+        #expect(DuoFoldState(hingeAngle: .pi - 0.001, thresholds: thresholds) == .partiallyOpen)
+        #expect(DuoFoldState(hingeAngle: .pi, thresholds: thresholds) == .fullyOpen)
+    }
+
     @Test(arguments: [0.0, 0.5, 1.0])
     func closedEndpointToleratesSmallVariations(degrees: Double) {
         #expect(DuoFoldState(hingeAngle: degrees * .pi / 180) == .closed)

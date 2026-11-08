@@ -32,6 +32,24 @@ struct MyApp: App {
 }
 ```
 
+The default fold thresholds are 1° for closed and 179° for fully open. Customize
+them independently with SwiftUI `Angle` values:
+
+```swift
+ContentView()
+    .duoTracking(
+        closedThreshold: .degrees(5),
+        fullyOpenThreshold: .degrees(175)
+    )
+```
+
+Angles at or below `closedThreshold` count as closed; angles at or above
+`fullyOpenThreshold` count as fully open. Angles between them count as partially
+open. Thresholds must be finite and satisfy
+`0° ≤ closedThreshold < fullyOpenThreshold ≤ 180°`; invalid settings fail a
+precondition. Changing these settings reclassifies the latest valid hinge angle
+without waiting for the hinge to move. Each window can use its own settings.
+
 Read only the properties your view needs:
 
 ```swift
@@ -70,7 +88,7 @@ are independently observable; pattern matching is optional.
 | `layout` | Outer display or compact-width inner window → `.phone`. Regular-width inner window → `.pad`. An active division region in that window selects `.folded`; otherwise `.flat`. |
 | `windowAspect` | Width greater than height → `.landscape`; otherwise `.portrait`. A square window uses `.portrait`. Reads the actual window, unaffected by content padding or the keyboard. |
 | `display` | The physical screen hosting this window, independently of the window's own size class and the hinge state. |
-| `foldState` | Derived from the measured hinge angle: ≤ 1° → `.closed`, ≥ 179° → `.fullyOpen`, otherwise `.partiallyOpen`. Independent of the active display and system hinge status. |
+| `foldState` | Derived from the measured hinge angle and configured endpoint thresholds: by default ≤ 1° → `.closed`, ≥ 179° → `.fullyOpen`, otherwise `.partiallyOpen`. Independent of the active display and system hinge status. |
 | `isFullScreen` | The window covers its display in screen coordinates, within one physical pixel. Split View and space occupied by pinned video make this `false`. |
 
 Aspect never determines fold direction. A partially open hinge does not itself
@@ -81,8 +99,8 @@ while the hinge is partially open. A wide window below pinned video can remain
 
 In a tent pose, an app on the outer display reports `.phone(windowAspect)`,
 `display == .outer`, and `foldState == .partiallyOpen`. Showing the outer display
-does not imply that the hinge is closed. Openings within the 1° endpoint
-tolerance count as closed. Hinge changes update `foldState` even
+does not imply that the hinge is closed. Openings within the configured closed
+threshold (1° by default) count as closed. Hinge changes update `foldState` even
 when the display, layout, and window dimensions remain unchanged.
 
 The optional environment value starts as `nil` until a valid window, display,
@@ -109,9 +127,11 @@ scene activation. Samples are delivered outside the layout pass and pending
 samples are coalesced. Each `.duoTracking()` installation owns its model; there
 is no shared singleton or search through global windows.
 
-Each angle callback performs a finite-value check and at most two endpoint
-comparisons. An unchanged fold classification returns immediately, without
-scheduling layout or an observable model update. The 1° tolerance is DuoKit's
+Thresholds are validated and converted to radians when configured. Each angle
+callback performs a finite-value check and at most two endpoint comparisons,
+and caches one angle for reclassification when settings change. An unchanged
+fold classification returns immediately, without scheduling layout or an
+observable model update. The default 1° tolerance is DuoKit's
 classification policy, rather than a claim about sensor precision; it keeps
 small endpoint variations in the same state. Layout still follows active
 division regions independently.
@@ -139,7 +159,8 @@ simulator if needed; the unit tests do not require Duo hardware.
 
 Tests cover all six layouts, Split View, pinned-video sizing, independent hinge
 and layout state, missing geometry, display inference, full-screen geometry,
-per-window identity, and property-level observation.
+per-window identity, property-level observation, custom fold thresholds, and
+reclassification when thresholds change without hinge movement.
 
 Live checks on the iOS 27.2 iPhone Duo simulator cover all six layouts, stable
 model identity through display changes and rotation, and two simultaneous
