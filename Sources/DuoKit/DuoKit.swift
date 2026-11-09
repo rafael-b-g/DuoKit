@@ -12,7 +12,7 @@ public enum DuoLayout: Hashable, Sendable {
     case phone(Aspect)
     case pad(Aspect, PadState)
 
-    /// The window is available, but its layout size class is not yet known.
+    /// Window information is pending or its layout cannot yet be classified.
     case unknown
 
     public enum PadState: Hashable, Sendable {
@@ -57,18 +57,21 @@ public enum DuoFoldState: Hashable, Sendable {
 @MainActor
 @Observable
 public final class Duo {
-    public private(set) var layout: DuoLayout
-    public private(set) var windowAspect: Aspect
-    public private(set) var display: DuoDisplay
-    public private(set) var foldState: DuoFoldState
-    public private(set) var isFullScreen: Bool
+    public private(set) var layout: DuoLayout = .unknown
+    public private(set) var windowAspect: Aspect?
+    public private(set) var display: DuoDisplay?
+    public private(set) var foldState: DuoFoldState?
+    public private(set) var isFullScreen: Bool?
 
-    init(_ configuration: DuoConfiguration) {
-        layout = configuration.layout
-        windowAspect = configuration.aspect
-        display = configuration.display
-        foldState = configuration.foldState
-        isFullScreen = configuration.isFullScreen
+    init() {}
+
+    convenience init(_ configuration: DuoConfiguration) {
+        self.init()
+        update(configuration)
+    }
+
+    func updateFoldState(_ state: DuoFoldState) {
+        if foldState != state { foldState = state }
     }
 
     func update(_ configuration: DuoConfiguration) {
@@ -76,8 +79,8 @@ public final class Duo {
         // Equality guards also avoid redundant notifications on older runtimes.
         if layout != configuration.layout { layout = configuration.layout }
         if windowAspect != configuration.aspect { windowAspect = configuration.aspect }
-        if display != configuration.display { display = configuration.display }
-        if foldState != configuration.foldState { foldState = configuration.foldState }
+        if let value = configuration.display, display != value { display = value }
+        if let value = configuration.foldState { updateFoldState(value) }
         if isFullScreen != configuration.isFullScreen { isFullScreen = configuration.isFullScreen }
     }
 }

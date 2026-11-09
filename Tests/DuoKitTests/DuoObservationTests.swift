@@ -10,6 +10,61 @@ struct DuoObservationTests {
         #expect(EnvironmentValues().duo == nil)
     }
 
+    @Test func knownDuoIsRecognizedBeforeWindowReadings() throws {
+        let tracker = DuoTracker(isKnownDuo: true)
+        let duo = try #require(tracker.duo)
+        #expect(duo.layout == .unknown)
+        #expect(duo.windowAspect == nil)
+        #expect(duo.display == nil)
+        #expect(duo.foldState == nil)
+        #expect(duo.isFullScreen == nil)
+
+        let window = NSObject()
+        tracker.update(configuration(hinge: nil), windowID: ObjectIdentifier(window))
+        #expect(tracker.duo === duo)
+        #expect(duo.layout == .pad(.portrait, .flat))
+        #expect(duo.windowAspect == .portrait)
+        #expect(duo.display == .inner)
+        #expect(duo.isFullScreen == true)
+        #expect(duo.foldState == nil)
+
+        tracker.detectHinge(foldState: .partiallyOpen)
+        #expect(tracker.duo === duo)
+        #expect(duo.foldState == .partiallyOpen)
+    }
+
+    @Test func unknownModelCanBeRecognizedByHingeWithoutWindowReadings() async throws {
+        let tracker = DuoTracker(isKnownDuo: false)
+        #expect(tracker.duo == nil)
+        await confirmation { changed in
+            withObservationTracking {
+                _ = tracker.duo
+            } onChange: {
+                changed()
+            }
+            tracker.detectHinge(foldState: .partiallyOpen)
+        }
+        let duo = try #require(tracker.duo)
+        #expect(duo.foldState == .partiallyOpen)
+        #expect(duo.layout == .unknown)
+        #expect(duo.windowAspect == nil)
+        #expect(duo.display == nil)
+        #expect(duo.isFullScreen == nil)
+        await confirmation(expectedCount: 0) { changed in
+            withObservationTracking {
+                _ = tracker.duo
+            } onChange: {
+                changed()
+            }
+            tracker.detectHinge()
+        }
+        let window = NSObject()
+        tracker.update(configuration(hinge: nil), windowID: ObjectIdentifier(window))
+        #expect(tracker.duo === duo)
+        #expect(duo.foldState == .partiallyOpen)
+        #expect(duo.windowAspect == .portrait)
+    }
+
     @Test(arguments: [Aspect.portrait, .landscape])
     func tentPoseUpdatesHingeWhileOuterPhoneLayoutStaysTheSame(aspect: Aspect) async throws {
         let size = aspect == .portrait
@@ -39,7 +94,7 @@ struct DuoObservationTests {
         #expect(duo.layout == .phone(aspect))
         #expect(duo.display == .outer)
         #expect(duo.foldState == .partiallyOpen)
-        #expect(duo.isFullScreen)
+        #expect(duo.isFullScreen == true)
     }
 
     @Test func windowsOwnIndependentInstances() throws {
@@ -125,7 +180,7 @@ struct DuoObservationTests {
     }
 
     private func configuration(
-        hinge: DuoFoldState = .fullyOpen,
+        hinge: DuoFoldState? = .fullyOpen,
         folded: Bool = false
     ) -> DuoConfiguration {
         // The fixed, positive test dimensions always form a valid sample.

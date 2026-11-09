@@ -7,15 +7,15 @@ struct DuoConfiguration: Equatable {
     }
 
     let aspect: Aspect
-    let display: DuoDisplay
-    let foldState: DuoFoldState
+    let display: DuoDisplay?
+    let foldState: DuoFoldState?
     let isFullScreen: Bool
     let layout: DuoLayout
 
     init?(
         windowSize: CGSize,
-        display: DuoDisplay,
-        foldState: DuoFoldState,
+        display: DuoDisplay? = nil,
+        foldState: DuoFoldState? = nil,
         isFullScreen: Bool,
         widthClass: SizeClass,
         hasActiveDivision: Bool
@@ -34,7 +34,7 @@ struct DuoConfiguration: Equatable {
             layout = .phone(aspect)
         case (.inner, .regular):
             layout = .pad(aspect, hasActiveDivision ? .folded : .flat)
-        case (.inner, .unspecified):
+        case (.inner, .unspecified), (nil, _):
             layout = .unknown
         }
     }

@@ -103,16 +103,29 @@ does not imply that the hinge is closed. Openings within the configured closed
 threshold (1° by default) count as closed. Hinge changes update `foldState` even
 when the display, layout, and window dimensions remain unchanged.
 
-The optional environment value starts as `nil` until a valid window, display,
-and hinge sample arrive, and remains `nil` on unsupported devices. The same
-`Duo` object is then updated throughout that window's lifetime. Temporary
+`duo != nil` means Duo hardware has been identified. Known Duo hardware
+(`iPhone19,4`) receives its model synchronously when `.duoTracking()` is installed,
+before any window or hinge readings. On physical devices, DuoKit reads `uname().machine`; in the
+simulator it reads `SIMULATOR_MODEL_IDENTIFIER`. The lookup is cached once per
+process, with no database loading or repeated system calls.
+
+A nonmatching or unavailable identifier keeps hinge detection active. The first
+non-nil hinge reading creates a model even if window information is still
+pending. Until that fallback succeeds, `duo` remains `nil` on unrecognized
+hardware, including unsupported devices.
+
+The model starts with `layout == .unknown`. `windowAspect`, `display`,
+`foldState`, and `isFullScreen` are optional and start as `nil`. Available window
+values are read immediately on window attachment and layout, without waiting
+for hinge data. The hinge independently fills `foldState`. Updates are published
+outside UIKit's layout/setup pass so SwiftUI can safely observe them.
+The same `Duo` object is updated throughout that window's lifetime. Temporary
 unavailable or nonfinite hinge readings, or zero-sized geometry, retain the last
 valid values.
 
-`.unknown` is retained for a specific case: a recognized inner-display window
-has usable geometry but its horizontal size class is unspecified. This avoids
-guessing a phone or pad layout and keeps the other properties available. It is
-different from `nil`, which means no tracked Duo model is available.
+Use `duo != nil` for early device identification, and handle `.unknown` when
+choosing a layout. Layout also remains `.unknown` if display traits or the
+inner window's width size class are unspecified. Values are never guessed.
 
 ## Implementation
 
@@ -137,7 +150,7 @@ small endpoint variations in the same state. Layout still follows active
 division regions independently.
 
 **Display identification:** the public SDK does not expose an inner/outer
-display identifier. After hinge detection, DuoKit infers it from the hosting
+display identifier. DuoKit infers it from the hosting
 **screen's** size classes: regular on both axes means inner; a compact axis
 means outer. It does not use the app window's size classes for this inference.
 The distinction matters in Split View and when the outer display rotates.
@@ -160,7 +173,8 @@ simulator if needed; the unit tests do not require Duo hardware.
 Tests cover all six layouts, Split View, pinned-video sizing, independent hinge
 and layout state, missing geometry, display inference, full-screen geometry,
 per-window identity, property-level observation, custom fold thresholds, and
-reclassification when thresholds change without hinge movement.
+reclassification when thresholds change without hinge movement, and early
+model identification with hinge-based fallback.
 
 Live checks on the iOS 27.2 iPhone Duo simulator cover all six layouts, stable
 model identity through display changes and rotation, and two simultaneous

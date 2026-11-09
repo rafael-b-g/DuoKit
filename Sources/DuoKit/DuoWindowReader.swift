@@ -31,18 +31,22 @@ final class DuoWindowProbe: UIView {
     private var hingeAngle: Double?
     private var pendingUpdate: Task<Void, Never>?
     private var hingeInteraction: UIHingeInteraction?
+    private var hasDetectedDuo: Bool
 
     init(tracker: DuoTracker, thresholds: DuoFoldThresholds) {
         self.tracker = tracker
         self.thresholds = thresholds
+        hasDetectedDuo = tracker.duo != nil
         super.init(frame: .zero)
         isUserInteractionEnabled = false
 
         let interaction = UIHingeInteraction { [weak self] _, update in
             guard let self, let hinge = update.hinge else { return }
+            let newlyDetected = !hasDetectedDuo
+            hasDetectedDuo = true
             // An unavailable reading can be transient when moving hierarchies.
             // Keep the last valid physical state until a fresh reading arrives.
-            updateHingeAngle(Double(hinge.angle))
+            if updateHingeAngle(Double(hinge.angle)) || newlyDetected { publishUpdate() }
         }
         hingeInteraction = interaction
         addInteraction(interaction)
@@ -68,6 +72,7 @@ final class DuoWindowProbe: UIView {
                 name: UIScene.didActivateNotification, object: scene
             )
         }
+        publishUpdate()
         setNeedsLayout()
     }
 
@@ -78,18 +83,22 @@ final class DuoWindowProbe: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        publishUpdate()
+    }
+
+    private func windowConfiguration() -> DuoConfiguration? {
         // Query reserved regions during layout so UIKit can track dependencies.
-        guard let window, let scene = window.windowScene, let foldState else { return }
+        guard let window, let scene = window.windowScene else { return nil }
 
         // Screen traits describe the display; window traits may be compact on
         // the inner display in Split View. Never infer display from hinge state.
         let screen = scene.screen
-        guard let display = DuoConfiguration.display(
+        let display = DuoConfiguration.display(
             horizontal: sizeClass(screen.traitCollection.horizontalSizeClass),
             vertical: sizeClass(screen.traitCollection.verticalSizeClass)
-        ) else { return }
+        )
         let frameOnScreen = window.convert(window.bounds, to: screen.coordinateSpace)
-        guard let configuration = DuoConfiguration(
+        return DuoConfiguration(
             windowSize: window.bounds.size,
             display: display,
             foldState: foldState,
@@ -100,17 +109,26 @@ final class DuoWindowProbe: UIView {
             ),
             widthClass: sizeClass(window.traitCollection.horizontalSizeClass),
             hasActiveDivision: !window.reservedRegions(kind: .division).isEmpty
-        ) else { return }
+        )
+    }
 
+    private func publishUpdate() {
+        guard hasDetectedDuo else { return }
+        // Read available values immediately; don't wait for the other sensors.
+        let configuration = windowConfiguration()
+        let windowID = window.map { ObjectIdentifier($0) }
+        let foldState = self.foldState
         // Deliver outside UIKit/SwiftUI's layout pass. Coalesce pending samples
         // and reject a sample if the probe has since moved to another window.
         pendingUpdate?.cancel()
-        let windowID = ObjectIdentifier(window)
         pendingUpdate = Task { @MainActor [weak self] in
             guard !Task.isCancelled, let self,
-                  let currentWindow = self.window,
-                  ObjectIdentifier(currentWindow) == windowID else { return }
-            tracker.update(configuration, windowID: windowID)
+                  self.window.map({ ObjectIdentifier($0) }) == windowID else { return }
+            if let configuration, let windowID {
+                tracker.update(configuration, windowID: windowID)
+            } else {
+                tracker.detectHinge(foldState: foldState)
+            }
             pendingUpdate = nil
         }
     }
@@ -120,17 +138,19 @@ final class DuoWindowProbe: UIView {
     func updateThresholds(_ thresholds: DuoFoldThresholds) {
         guard thresholds != self.thresholds else { return }
         self.thresholds = thresholds
-        if let hingeAngle { updateHingeAngle(hingeAngle) }
+        if let hingeAngle, updateHingeAngle(hingeAngle) { publishUpdate() }
     }
 
-    func updateHingeAngle(_ angle: Double) {
-        guard let newState = DuoFoldState(hingeAngle: angle, thresholds: thresholds) else { return }
+    @discardableResult
+    func updateHingeAngle(_ angle: Double) -> Bool {
+        guard let newState = DuoFoldState(hingeAngle: angle, thresholds: thresholds) else { return false }
         // Retain the newest reading even within the same classification, so
         // changing thresholds can immediately reclassify the physical pose.
         hingeAngle = angle
-        guard newState != foldState else { return }
+        guard newState != foldState else { return false }
         foldState = newState
         setNeedsLayout()
+        return true
     }
 
     private func sizeClass(_ value: UIUserInterfaceSizeClass) -> DuoConfiguration.SizeClass {

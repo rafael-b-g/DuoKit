@@ -4,7 +4,9 @@ import SwiftUI
 extension EnvironmentValues {
     /// Information for the tracked window, or `nil` on unsupported devices.
     ///
-    /// Also `nil` before the first valid window and hinge readings arrive.
+    /// Known Duo hardware receives a model immediately when tracking is installed.
+    /// Other models remain `nil` until a hinge is detected. Individual readings
+    /// are optional while pending, and layout starts as `.unknown`.
     @Entry public var duo: Duo? = nil
 }
 
@@ -49,19 +51,26 @@ private struct DuoTrackingModifier: ViewModifier {
     }
 }
 
-/// Only replacement of the window model invalidates the tracking modifier.
+/// Keeps hardware detection separate from the window model's readiness.
 @MainActor
 @Observable
 final class DuoTracker {
     private(set) var duo: Duo?
     @ObservationIgnored private var windowID: ObjectIdentifier?
 
+    init(isKnownDuo: Bool = DuoDeviceDetection.isKnownDuo) {
+        duo = isKnownDuo ? Duo() : nil
+    }
+
+    func detectHinge(foldState: DuoFoldState? = nil) {
+        if duo == nil { duo = Duo() }
+        if let foldState { duo?.updateFoldState(foldState) }
+    }
+
     func update(_ configuration: DuoConfiguration, windowID: ObjectIdentifier) {
-        if self.windowID == windowID, let duo {
-            duo.update(configuration)
-        } else {
-            self.windowID = windowID
-            duo = Duo(configuration)
-        }
+        if let previous = self.windowID, previous != windowID { duo = nil }
+        self.windowID = windowID
+        detectHinge()
+        duo?.update(configuration)
     }
 }

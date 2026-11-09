@@ -3,6 +3,18 @@ import Testing
 @testable import DuoKit
 
 struct DuoConfigurationTests {
+    @Test func geometryIsAvailableBeforeDisplayAndHinge() throws {
+        let configuration = try #require(DuoConfiguration(
+            windowSize: CGSize(width: 700, height: 900),
+            isFullScreen: true, widthClass: .regular, hasActiveDivision: false
+        ))
+        #expect(configuration.aspect == .portrait)
+        #expect(configuration.isFullScreen)
+        #expect(configuration.layout == .unknown)
+        #expect(configuration.display == nil)
+        #expect(configuration.foldState == nil)
+    }
+
     @Test func physicalDisplayUsesBothScreenSizeClasses() {
         #expect(DuoConfiguration.display(horizontal: .compact, vertical: .regular) == .outer)
         #expect(DuoConfiguration.display(horizontal: .regular, vertical: .compact) == .outer)
