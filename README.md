@@ -73,10 +73,10 @@ The model stays stable as its window resizes, rotates, folds, or changes display
 
 ## Understanding the state
 
-- **`layout` is independent of the display being used.** The outer display and compact-width inner windows use `.phone`. Regular-width inner windows use `.pad`. A compact Split View window will therefore report `.phone` on the inner display.
-- **Folded layout and hinge state are independent.** A pad layout becomes `.folded` when an active system division region intersects the window. A partially open hinge alone does not imply a folded layout, and the outer display can be active while the hinge is partially open.
-- **Aspect describes window proportions.** It does not indicate physical device orientation. Padding and the keyboard do not change it.
-- **Handle pending values.** `duo != nil` means Duo hardware was detected. Its layout starts as `.unknown`; other properties start as `nil` and become available independently. Temporary missing readings retain the last valid values.
+- **`layout` does not indicate physical display.** Windows in Split View on the inner display use `.phone`, just like windows in the outer display. If you need to know the actual display your window is in, use the `display` property.
+- **Folded layout and hinge state are independent.** A pad layout becomes `.folded` when an active system division region intersects the app window. A partially open hinge alone does not imply a folded layout, and the outer display can be active while the hinge is partially open (for example, when the Duo is in a "tent" pose).
+- **Aspect describes window proportions.** It does not indicate physical device orientation (the user can lock orientation, and your app might not occupy the entire screen, like in Split View). Padding and the keyboard do not affect it.
+- **Handle pending values.** `duo != nil` means Duo hardware was detected. Its layout starts as `.unknown`. Other properties start as `nil` and become available independently. Temporary missing readings retain the last valid values.
 
 ## Configuration
 
