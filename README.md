@@ -1,21 +1,19 @@
 # DuoKit
 
-A small SwiftUI package for adapting interfaces to iPhone Duo. One observable
-model per window exposes layout, window proportions, display, hinge state, and
-full-screen occupancy. No dependencies, polling, or app-delegate setup.
+A SwiftUI package for adapting your app to the iPhone Duo.
 
-## Requirements
+DuoKit is most useful when you want to build custom interactions and designs specifically for the iPhone Duo. Apple recomends building apps that are flexible and adaptable to any screen size, orientation, and pose. But if you want to make something more custom for the iPhone Duo (or if you want a simpler way to work with Duo-specific APIs), DuoKit might be a good fit.
 
-- Xcode 27.2 / Swift 6.4 or later.
-- iOS 17 or later to import the package; live Duo tracking requires iOS 27.1.
-- On earlier iOS versions, ordinary iPhones, iPads, and Mac Catalyst,
-  the environment value is `nil`.
+## Requirements & installation
 
-Add this repository as a Swift package dependency and link the **DuoKit** product.
+- Xcode 27.2 / Swift 6.4 or later
+- iOS 17 or later
 
-## Setup
+In Xcode, add `https://github.com/rafael-b-g/DuoKit` as a Swift package dependency and link the **DuoKit** product.
 
-Apply tracking once to the root of each window:
+## Quick start
+
+Apply `.duoTracking()` once to the root view of each window:
 
 ```swift
 import SwiftUI
@@ -32,25 +30,7 @@ struct MyApp: App {
 }
 ```
 
-The default fold thresholds are 1° for closed and 179° for fully open. Customize
-them independently with SwiftUI `Angle` values:
-
-```swift
-ContentView()
-    .duoTracking(
-        closedThreshold: .degrees(5),
-        fullyOpenThreshold: .degrees(175)
-    )
-```
-
-Angles at or below `closedThreshold` count as closed; angles at or above
-`fullyOpenThreshold` count as fully open. Angles between them count as partially
-open. Thresholds must be finite and satisfy
-`0° ≤ closedThreshold < fullyOpenThreshold ≤ 180°`; invalid settings fail a
-precondition. Changing these settings reclassifies the latest valid hinge angle
-without waiting for the hinge to move. Each window can use its own settings.
-
-Read only the properties your view needs:
+Read the model from the environment:
 
 ```swift
 struct ContentView: View {
@@ -77,112 +57,50 @@ struct ContentView: View {
 }
 ```
 
-Broader patterns such as `.phone`, `.pad`, and `.pad(_, .folded)` also work.
-`duo?.windowAspect`, `duo?.display`, `duo?.foldState`, and `duo?.isFullScreen`
-are independently observable; pattern matching is optional.
+You can also match broader cases such as `.phone`, `.pad`, or `.pad(_, .folded)`. Read only the properties your view needs. Each property is independently observable.
 
-## Semantics
+## Available information
 
-| Property | Meaning |
-| --- | --- |
-| `layout` | Outer display or compact-width inner window → `.phone`. Regular-width inner window → `.pad`. An active division region in that window selects `.folded`; otherwise `.flat`. |
-| `windowAspect` | Width greater than height → `.landscape`; otherwise `.portrait`. A square window uses `.portrait`. Reads the actual window, unaffected by content padding or the keyboard. |
-| `display` | The physical screen hosting this window, independently of the window's own size class and the hinge state. |
-| `foldState` | Derived from the measured hinge angle and configured endpoint thresholds: by default ≤ 1° → `.closed`, ≥ 179° → `.fullyOpen`, otherwise `.partiallyOpen`. Independent of the active display and system hinge status. |
-| `isFullScreen` | The window covers its display in screen coordinates, within one physical pixel. Split View and space occupied by pinned video make this `false`. |
+| Property | Meaning | Possible values |
+| --- | --- | --- |
+| `layout` | The interface layout available to the window. | `.phone(.portrait)`<br>`.phone(.landscape)`<br>`.pad(.portrait, .flat)`<br>`.pad(.landscape, .flat)`<br>`.pad(.portrait, .folded)`<br>`.pad(.landscape, .folded)`<br>`.unknown` |
+| `windowAspect` | Window proportions based on actual dimensions. Square windows use portrait. | `.portrait`<br>`.landscape`<br>`nil` |
+| `display` | The physical display hosting the window. | `.inner`<br>`.outer`<br>`nil` |
+| `foldState` | The hinge state derived from its measured angle. | `.closed`<br>`.partiallyOpen`<br>`.fullyOpen`<br>`nil` |
+| `isFullScreen` | Whether the window fills the display. | `true`<br>`false`<br>`nil` |
 
-Aspect never determines fold direction. A partially open hinge does not itself
-make the layout `.folded`: only an active division region intersecting the app
-window does. A compact inner-display Split View window remains `.phone` even
-while the hinge is partially open. A wide window below pinned video can remain
-`.pad` while `isFullScreen` is `false`.
+The model stays stable as its window resizes, rotates, folds, or changes displays. Properties are read-only and update automatically.
 
-In a tent pose, an app on the outer display reports `.phone(windowAspect)`,
-`display == .outer`, and `foldState == .partiallyOpen`. Showing the outer display
-does not imply that the hinge is closed. Openings within the configured closed
-threshold (1° by default) count as closed. Hinge changes update `foldState` even
-when the display, layout, and window dimensions remain unchanged.
+## Understanding the state
 
-`duo != nil` means Duo hardware has been identified. Known Duo hardware
-(`iPhone19,4`) receives its model synchronously when `.duoTracking()` is installed,
-before any window or hinge readings. On physical devices, DuoKit reads `uname().machine`; in the
-simulator it reads `SIMULATOR_MODEL_IDENTIFIER`. The lookup is cached once per
-process, with no database loading or repeated system calls.
+- **`layout` is independent of the display being used.** The outer display and compact-width inner windows use `.phone`. Regular-width inner windows use `.pad`. A compact Split View window will therefore report `.phone` on the inner display.
+- **Folded layout and hinge state are independent.** A pad layout becomes `.folded` when an active system division region intersects the window. A partially open hinge alone does not imply a folded layout, and the outer display can be active while the hinge is partially open.
+- **Aspect describes window proportions.** It does not indicate physical device orientation. Padding and the keyboard do not change it.
+- **Handle pending values.** `duo != nil` means Duo hardware was detected. Its layout starts as `.unknown`; other properties start as `nil` and become available independently. Temporary missing readings retain the last valid values.
 
-A nonmatching or unavailable identifier keeps hinge detection active. The first
-non-nil hinge reading creates a model even if window information is still
-pending. Until that fallback succeeds, `duo` remains `nil` on unrecognized
-hardware, including unsupported devices.
+## Configuration
 
-The model starts with `layout == .unknown`. `windowAspect`, `display`,
-`foldState`, and `isFullScreen` are optional and start as `nil`. Available window
-values are read immediately on window attachment and layout, without waiting
-for hinge data. The hinge independently fills `foldState`. Updates are published
-outside UIKit's layout/setup pass so SwiftUI can safely observe them.
-The same `Duo` object is updated throughout that window's lifetime. Temporary
-unavailable or nonfinite hinge readings, or zero-sized geometry, retain the last
-valid values.
+By default, `foldState` is `.closed` at hinge angles at or below 1°, `.fullyOpen` at or above 179°, and `.partiallyOpen` between those thresholds.
 
-Use `duo != nil` for early device identification, and handle `.unknown` when
-choosing a layout. Layout also remains `.unknown` if display traits or the
-inner window's width size class are unspecified. Values are never guessed.
+You can customize these thresholds:
 
-## Implementation
-
-`Duo` is `@MainActor` and `@Observable`, with independently stored, read-only
-public properties. Updates change only unequal properties. Reading `layout`
-does not subscribe a view to unrelated physical hinge changes, and the
-environment object is not replaced on each update.
-
-A small, noninteractive UIKit view reads its containing `UIWindow` and scene.
-It uses native hinge callbacks, reserved regions, layout and trait changes, and
-scene activation. Samples are delivered outside the layout pass and pending
-samples are coalesced. Each `.duoTracking()` installation owns its model; there
-is no shared singleton or search through global windows.
-
-Thresholds are validated and converted to radians when configured. Each angle
-callback performs a finite-value check and at most two endpoint comparisons,
-and caches one angle for reclassification when settings change. An unchanged
-fold classification returns immediately, without scheduling layout or an
-observable model update. The default 1° tolerance is DuoKit's
-classification policy, rather than a claim about sensor precision; it keeps
-small endpoint variations in the same state. Layout still follows active
-division regions independently.
-
-**Display identification:** the public SDK does not expose an inner/outer
-display identifier. DuoKit infers it from the hosting
-**screen's** size classes: regular on both axes means inner; a compact axis
-means outer. It does not use the app window's size classes for this inference.
-The distinction matters in Split View and when the outer display rotates.
-This mapping is verified on the iOS 27.2 iPhone Duo simulator and should be
-rechecked when supporting new hardware or SDK behavior.
-
-The public enums are `Hashable` and `Sendable`. Model creation and mutation are
-internal; apps access their scene's model through the environment.
-
-## Validation
-
-```sh
-xcodebuild -scheme DuoKit -destination 'platform=iOS Simulator,name=iPhone 17' test
-xcodebuild -scheme DuoKit -destination 'generic/platform=iOS Simulator' build
+```swift
+ContentView()
+    .duoTracking(
+        closedThreshold: .degrees(5),
+        fullyOpenThreshold: .degrees(175)
+    )
 ```
 
-Unit tests run on an iOS simulator. Substitute the name of an installed iOS
-simulator if needed; the unit tests do not require Duo hardware.
+Thresholds must be finite and satisfy `0° ≤ closedThreshold < fullyOpenThreshold ≤ 180°`; invalid values fail a precondition. Changes immediately reclassify the latest valid hinge reading.
 
-Tests cover all six layouts, Split View, pinned-video sizing, independent hinge
-and layout state, missing geometry, display inference, full-screen geometry,
-per-window identity, property-level observation, custom fold thresholds, and
-reclassification when thresholds change without hinge movement, and early
-model identification with hinge-based fallback.
+## Support & limitations
 
-Live checks on the iOS 27.2 iPhone Duo simulator cover all six layouts, stable
-model identity through display changes and rotation, and two simultaneous
-Split View windows with distinct models. Both Split View windows report
-`.phone(.portrait)`, `.inner`, and `isFullScreen == false`. Folding and
-unfolding also update layout when the window's dimensions stay unchanged.
-These are simulator checks, not physical-device validation.
+- On unsupported devices, iOS versions before 27.1, and Mac Catalyst, `duo` is `nil`.
+- Display identification is inferred from the screen's size classes because the SDK has no explicit inner/outer identifier.
 
-References: [Prepare your app for iPhone Duo](https://developer.apple.com/videos/play/tech-talks/111461/),
-[adaptive layouts and reserved regions](https://developer.apple.com/videos/play/tech-talks/111463/),
-and [hinge information and multiple scenes](https://developer.apple.com/videos/play/tech-talks/111464/).
+## Contributing & license
+
+Feel free to open an issue if you find any bugs or have any suggestions/feedback.
+
+Released under the [MIT License](LICENSE).
