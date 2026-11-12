@@ -2,6 +2,15 @@
 
 ![iPhone Duo in different poses](https://developer.apple.com/tutorials/images/com.apple.HIG/designing-for-iphone-poses@2x.png)
 
+<p>
+  <img alt="Swift 6.4+" src="https://img.shields.io/badge/Swift-6.4%2B-F05138.svg" />
+  <img alt="iOS 17+" src="https://img.shields.io/badge/iOS-17%2B-0A84FF.svg" />
+  <br>
+  <a href="https://x.com/rafa_b_g">
+    <img alt="X/Twitter" src="https://img.shields.io/badge/X%2FTwitter-%40rafa__b__g-111111.svg" />
+  </a>
+</p>
+
 A SwiftUI package for adapting your app to the iPhone Duo.
 
 DuoKit is most useful when you want to build custom interactions and designs specifically for the iPhone Duo. Apple recomends building apps that are flexible and adaptable to any screen size, orientation, and pose. But if you want to make something more custom for the iPhone Duo (or if you want a simpler way to work with Duo-specific APIs), DuoKit might be a good fit.
